@@ -1,7 +1,8 @@
 const express = require('express')
 const bodyParser = require('body-parser')
-const db = require('./database')
-const flows = require('./flows')
+
+const db = require('./database.js')
+const flows = require('./flows.js')
 
 const app = express()
 app.use(bodyParser.json())
