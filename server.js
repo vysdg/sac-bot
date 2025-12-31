@@ -96,49 +96,43 @@ app.post("/webhook", async (req, res) => {
       return res.json({ reply: menuMessage() });
     }
 
-    switch (user.state) {
-      case "MENU":
-        if (message === "1") {
-          await updateState(phone, "HUMANO");
-          return res.json({
-            reply: "💰 Encaminhando para o Financeiro. Aguarde.",
-          });
-        }
+    if (user.state === "MENU") {
+      if (message === "1") {
+        await updateState(phone, "HUMANO");
+        return res.json({ reply: "💰 Encaminhando para o Financeiro." });
+      }
 
-        if (message === "2") {
-          await updateState(phone, "HUMANO");
-          return res.json({
-            reply: "🛠️ Encaminhando para o Suporte Técnico. Aguarde.",
-          });
-        }
+      if (message === "2") {
+        await updateState(phone, "HUMANO");
+        return res.json({ reply: "🛠️ Encaminhando para o Suporte Técnico." });
+      }
 
-        if (message === "3") {
-          await updateState(phone, "HUMANO");
-          return res.json({
-            reply: "👩‍💼 Encaminhando para um atendente humano.",
-          });
-        }
+      if (message === "3") {
+        await updateState(phone, "HUMANO");
+        return res.json({ reply: "👩‍💼 Encaminhando para um atendente humano." });
+      }
 
-        return res.json({
-          reply:
-            "❌ Opção inválida.\n\n" +
-            "1️⃣ Financeiro\n" +
-            "2️⃣ Suporte Técnico\n" +
-            "3️⃣ Falar com um atendente",
-        });
-
-      case "HUMANO":
-      default:
-        return res.json({
-          reply: fallbackHumano(message),
-        });
+      return res.json({
+        reply:
+          "❌ Opção inválida.\n\n" +
+          "1️⃣ Financeiro\n" +
+          "2️⃣ Suporte Técnico\n" +
+          "3️⃣ Falar com um atendente",
+      });
     }
+
+    return res.json({
+      reply: fallbackHumano(message),
+    });
   } catch (err) {
     console.error(err);
     res.status(500).json({ error: "Erro interno" });
   }
 });
 
+/* =========================
+   RESET (OPCIONAL)
+========================= */
 app.post("/reset", async (req, res) => {
   const { phone } = req.body;
 
@@ -147,12 +141,11 @@ app.post("/reset", async (req, res) => {
   }
 
   await updateState(phone, "MENU");
-
-  res.json({ ok: true, message: "Estado resetado" });
+  res.json({ ok: true });
 });
 
 /* =========================
-   SERVER (FLY FIX 🔥)
+   SERVER (FLY.IO)
 ========================= */
 app.listen(PORT, "0.0.0.0", () => {
   console.log(`🚀 SAC Bot rodando em 0.0.0.0:${PORT}`);
