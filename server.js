@@ -1,65 +1,169 @@
-const express = require("express");
-const bodyParser = require("body-parser");
+import express from "express";
+import cors from "cors";
+import sqlite3 from "sqlite3";
+import { open } from "sqlite";
 
 const app = express();
-app.use(bodyParser.json());
+const PORT = process.env.PORT || 3000;
 
-// ====== FLOWS (simples para teste) ======
-const flows = {
-  menu: () =>
-    `👋 Olá! Bem-vindo ao SAC\n
-1️⃣ Vendas
-2️⃣ Suporte
-3️⃣ Financeiro
-4️⃣ Falar com humano`,
+/* =========================
+   MIDDLEWARE
+========================= */
+app.use(cors());
+app.use(express.json());
 
-  suporte: () =>
-    `🛠 Suporte Técnico\nDescreva seu problema.`,
+/* =========================
+   DATABASE (SQLite)
+========================= */
+const db = await open({
+  filename: "/data/leads.db",
+  driver: sqlite3.Database,
+});
 
-  suporteResposta: (msg) =>
-    `Recebemos sua solicitação:\n"${msg}"\nNossa equipe retornará em breve.`
-};
+await db.exec(`
+  CREATE TABLE IF NOT EXISTS users (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    phone TEXT UNIQUE,
+    state TEXT
+  )
+`);
 
-// ====== ROTA PRINCIPAL ======
+/* =========================
+   HELPERS
+========================= */
+async function getUser(phone) {
+  return db.get("SELECT * FROM users WHERE phone = ?", phone);
+}
+
+async function createUser(phone) {
+  await db.run(
+    "INSERT INTO users (phone, state) VALUES (?, ?)",
+    phone,
+    "MENU"
+  );
+}
+
+async function updateState(phone, state) {
+  await db.run(
+    "UPDATE users SET state = ? WHERE phone = ?",
+    state,
+    phone
+  );
+}
+
+/* =========================
+   MESSAGES
+========================= */
+function menuMessage() {
+  return (
+    "👋 Olá! Seja bem-vindo ao SAC.\n\n" +
+    "Escolha uma opção:\n" +
+    "1️⃣ Financeiro\n" +
+    "2️⃣ Suporte Técnico\n" +
+    "3️⃣ Falar com um atendente"
+  );
+}
+
+function fallbackHumano(userMessage) {
+  return (
+    "Recebemos sua solicitação:\n\n" +
+    `"${userMessage}"\n\n` +
+    "Nossa equipe retornará em breve."
+  );
+}
+
+/* =========================
+   ROUTES
+========================= */
+
+// Health check
 app.get("/", (req, res) => {
   res.json({ status: "SAC Bot online 🚀" });
 });
 
-// ====== SIMULAÇÃO DE WHATSAPP ======
-app.post("/webhook", (req, res) => {
-  const { message } = req.body;
+// Webhook principal
+app.post("/webhook", async (req, res) => {
+  try {
+    const { phone, message } = req.body;
 
-  if (!message) {
-    return res.json({ reply: flows.menu() });
+    if (!phone || !message) {
+      return res.status(400).json({ error: "phone e message são obrigatórios" });
+    }
+
+    let user = await getUser(phone);
+
+    // Usuário novo → cria e envia menu
+    if (!user) {
+      await createUser(phone);
+      return res.json({
+        reply: menuMessage(),
+      });
+    }
+
+    // Fluxo por estado
+    switch (user.state) {
+      case "MENU":
+        if (message === "1") {
+          await updateState(phone, "HUMANO");
+          return res.json({
+            reply: "💰 Encaminhando para o Financeiro. Aguarde um momento.",
+          });
+        }
+
+        if (message === "2") {
+          await updateState(phone, "HUMANO");
+          return res.json({
+            reply: "🛠️ Encaminhando para o Suporte Técnico. Aguarde um momento.",
+          });
+        }
+
+        if (message === "3") {
+          await updateState(phone, "HUMANO");
+          return res.json({
+            reply: "👩‍💼 Encaminhando para um atendente humano.",
+          });
+        }
+
+        return res.json({
+          reply:
+            "❌ Opção inválida.\n\n" +
+            "Digite uma das opções abaixo:\n" +
+            "1️⃣ Financeiro\n" +
+            "2️⃣ Suporte Técnico\n" +
+            "3️⃣ Falar com um atendente",
+        });
+
+      case "HUMANO":
+      default:
+        return res.json({
+          reply: fallbackHumano(message),
+        });
+    }
+  } catch (err) {
+    console.error(err);
+    res.status(500).json({ error: "Erro interno no servidor" });
+  }
+});
+
+// RESET DE USUÁRIO (APENAS PARA TESTES)
+app.post("/reset", async (req, res) => {
+  const { phone } = req.body;
+
+  if (!phone) {
+    return res.status(400).json({ error: "phone é obrigatório" });
   }
 
-  if (message === "1") {
-    return res.json({ reply: "💰 Setor de Vendas\nUm consultor falará com você." });
-  }
+  await updateState(phone, "MENU");
 
-  if (message === "2") {
-    return res.json({ reply: flows.suporte() });
-  }
-
-  if (message === "3") {
-    return res.json({
-      reply: "📄 Financeiro\nAceitamos PIX, cartão e boleto.\n⏰ 9h às 18h"
-    });
-  }
-
-  if (message === "4") {
-    return res.json({
-      reply: "👤 Atendimento humano\nAguarde um instante."
-    });
-  }
-
-  return res.json({
-    reply: flows.suporteResposta(message)
+  res.json({
+    ok: true,
+    message: "Estado resetado para MENU",
   });
 });
 
-// ====== PORTA (OBRIGATÓRIO NO FLY) ======
-const PORT = process.env.PORT || 3000;
+/* =========================
+   SERVER
+========================= */
 app.listen(PORT, () => {
-  console.log(`🚀 SAC rodando na porta ${PORT}`);
+  console.log(`🚀 SAC Bot rodando na porta ${PORT}`);
 });
