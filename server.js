@@ -14,80 +14,103 @@ app.get("/", (req, res) => {
 });
 
 // ===== WEBHOOK =====
-app.post("/webhook", (req, res) => {
+app.post("/webhook", async (req, res) => {
   try {
-    console.log("WEBHOOK RECEBIDO:", JSON.stringify(req.body, null, 2));
+    console.log("📩 WEBHOOK RECEBIDO:", JSON.stringify(req.body, null, 2));
 
-    // ===== NORMALIZAÇÃO (POSTMAN + Z-API) =====
-    const phone =
-      req.body?.phone ||
-      req.body?.data?.from ||
-      req.body?.from ||
-      null;
-
-    const message =
-      req.body?.message ||
-      req.body?.data?.body ||
-      req.body?.text?.message ||
-      "";
-
-    if (!phone || !message) {
-      return res.json({
-        reply: "❗ Mensagem inválida.",
-      });
+    // ===== EXTRAÇÃO DE DADOS DO Z-API =====
+    const phone = req.body?.connectedPhone || req.body?.phone || null;
+    const chatId = req.body?.chatId || null;
+    const message = req.body?.text?.message || req.body?.message || "";
+    const isStatusReply = req.body?.isStatusReply || false;
+    
+    // Ignora status replies e mensagens inválidas
+    if (isStatusReply || !phone || !message || !chatId) {
+      console.log("⏭️ Mensagem ignorada (status ou inválida)");
+      return res.status(200).json({ success: true });
     }
 
     const text = message.toLowerCase().trim();
+    console.log(`📱 Mensagem recebida: "${text}" de ${phone}`);
+
+    let reply = "";
 
     // ===== MENU =====
-    if (["oi", "olá", "ola", "menu"].includes(text)) {
-      return res.json({
-        reply:
-          "👋 Olá! Seja bem-vindo ao SAC.\n\n" +
-          "1️⃣ Financeiro\n" +
-          "2️⃣ Suporte Técnico\n" +
-          "3️⃣ Falar com um atendente",
-      });
+    if (["oi", "olá", "ola", "menu", "início", "inicio"].includes(text)) {
+      reply =
+        "👋 Olá! Seja bem-vindo ao SAC.\n\n" +
+        "1️⃣ Financeiro\n" +
+        "2️⃣ Suporte Técnico\n" +
+        "3️⃣ Falar com um atendente";
     }
-
     // ===== FINANCEIRO =====
-    if (text === "1") {
-      return res.json({
-        reply:
-          "💰 *Financeiro*\n\n" +
-          "Aceitamos PIX, cartão e boleto.\n" +
-          "⏰ Atendimento: 9h às 18h.\n\n" +
-          "Digite *menu* para voltar.",
-      });
+    else if (text === "1") {
+      reply =
+        "💰 *Financeiro*\n\n" +
+        "Aceitamos PIX, cartão e boleto.\n" +
+        "⏰ Atendimento: 9h às 18h.\n\n" +
+        "Digite *menu* para voltar.";
     }
-
     // ===== SUPORTE =====
-    if (text === "2") {
-      return res.json({
-        reply:
-          "🛠️ *Suporte Técnico*\n\n" +
-          "Descreva seu problema que vamos te ajudar.\n\n" +
-          "Digite *menu* para voltar.",
-      });
+    else if (text === "2") {
+      reply =
+        "🛠️ *Suporte Técnico*\n\n" +
+        "Descreva seu problema que vamos te ajudar.\n\n" +
+        "Digite *menu* para voltar.";
     }
-
     // ===== ATENDENTE =====
-    if (text === "3") {
-      return res.json({
-        reply:
-          "👤 Certo! Um atendente humano falará com você em breve.",
+    else if (text === "3") {
+      reply = "👤 Certo! Um atendente humano falará com você em breve.";
+    }
+    // ===== FALLBACK =====
+    else {
+      reply =
+        "❓ Não entendi sua mensagem.\nDigite *menu* para ver as opções.";
+    }
+
+    console.log(`✅ Resposta preparada: ${reply.substring(0, 50)}...`);
+
+    // ===== IMPORTANTE: Precisamos enviar via API do Z-API =====
+    // O webhook só RECEBE, não ENVIA automaticamente
+    // Precisamos fazer uma requisição para a API do Z-API
+    
+    const ZAPI_INSTANCE = process.env.ZAPI_INSTANCE || "SUA_INSTANCIA";
+    const ZAPI_TOKEN = process.env.ZAPI_TOKEN || "SEU_TOKEN";
+
+    if (ZAPI_INSTANCE === "SUA_INSTANCIA" || ZAPI_TOKEN === "SEU_TOKEN") {
+      console.log("⚠️ ATENÇÃO: Configure ZAPI_INSTANCE e ZAPI_TOKEN");
+      return res.status(200).json({
+        error: "Credenciais Z-API não configuradas",
+        phone: phone,
+        message: reply
       });
     }
 
-    // ===== FALLBACK =====
-    return res.json({
-      reply:
-        "❓ Não entendi sua mensagem.\nDigite *menu* para ver as opções.",
+    // Enviar mensagem via Z-API
+    const zapiUrl = `https://api.z-api.io/instances/${ZAPI_INSTANCE}/token/${ZAPI_TOKEN}/send-text`;
+    
+    const zapiResponse = await fetch(zapiUrl, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        phone: chatId, // Z-API usa chatId
+        message: reply
+      })
     });
+
+    const zapiResult = await zapiResponse.json();
+    console.log("📤 Resposta enviada via Z-API:", zapiResult);
+
+    return res.status(200).json({
+      success: true,
+      reply: reply
+    });
+
   } catch (err) {
-    console.error("Erro no webhook:", err);
+    console.error("❌ Erro no webhook:", err);
     return res.status(500).json({
-      reply: "⚠️ Erro interno. Tente novamente.",
+      error: "Erro interno",
+      details: err.message
     });
   }
 });
