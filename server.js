@@ -2,15 +2,13 @@ import express from "express";
 import cors from "cors";
 
 const app = express();
-
-// ===== CONFIG =====
 const PORT = process.env.PORT || 3000;
 
 // ===== MIDDLEWARES =====
 app.use(cors());
 app.use(express.json());
 
-// ===== HEALTH CHECK (OBRIGATÓRIO NO FLY) =====
+// ===== HEALTH CHECK =====
 app.get("/", (req, res) => {
   return res.json({ status: "SAC Bot online 🚀" });
 });
@@ -18,12 +16,24 @@ app.get("/", (req, res) => {
 // ===== WEBHOOK =====
 app.post("/webhook", (req, res) => {
   try {
-    const { phone, message } = req.body || {};
+    console.log("WEBHOOK RECEBIDO:", JSON.stringify(req.body, null, 2));
+
+    // ===== NORMALIZAÇÃO (POSTMAN + Z-API) =====
+    const phone =
+      req.body?.phone ||
+      req.body?.data?.from ||
+      req.body?.from ||
+      null;
+
+    const message =
+      req.body?.message ||
+      req.body?.data?.body ||
+      req.body?.text?.message ||
+      "";
 
     if (!phone || !message) {
       return res.json({
-        reply:
-          "❗ Mensagem inválida.\nEnvie um JSON com:\nphone e message.",
+        reply: "❗ Mensagem inválida.",
       });
     }
 
@@ -40,20 +50,28 @@ app.post("/webhook", (req, res) => {
       });
     }
 
+    // ===== FINANCEIRO =====
     if (text === "1") {
       return res.json({
         reply:
-          "💰 *Financeiro*\nAceitamos PIX, cartão e boleto.\n⏰ Atendimento: 9h às 18h.",
+          "💰 *Financeiro*\n\n" +
+          "Aceitamos PIX, cartão e boleto.\n" +
+          "⏰ Atendimento: 9h às 18h.\n\n" +
+          "Digite *menu* para voltar.",
       });
     }
 
+    // ===== SUPORTE =====
     if (text === "2") {
       return res.json({
         reply:
-          "🛠️ *Suporte Técnico*\nDescreva seu problema que vamos te ajudar.",
+          "🛠️ *Suporte Técnico*\n\n" +
+          "Descreva seu problema que vamos te ajudar.\n\n" +
+          "Digite *menu* para voltar.",
       });
     }
 
+    // ===== ATENDENTE =====
     if (text === "3") {
       return res.json({
         reply:
@@ -74,7 +92,7 @@ app.post("/webhook", (req, res) => {
   }
 });
 
-// ===== START SERVER (CRÍTICO) =====
+// ===== START SERVER =====
 app.listen(PORT, "0.0.0.0", () => {
   console.log(`🚀 SAC rodando em http://0.0.0.0:${PORT}`);
 });
