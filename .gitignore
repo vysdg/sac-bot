@@ -1,0 +1,17 @@
+# Banco de dados
+db.sqlite
+*.sqlite
+*.db
+
+# Node
+node_modules/
+
+# Ambiente
+.env
+
+# Logs
+npm-debug.log*
+yarn-debug.log*
+
+# Sistema
+.DS_Store
