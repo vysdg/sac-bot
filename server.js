@@ -1,8 +1,10 @@
-import "dotenv/config"; // <--- Isso ativa o cofre .env
+import "dotenv/config";
 import express from "express";
 import cors from "cors";
 import OpenAI from "openai";
 import { promptSistema, menuPrincipal, menuSuporte } from "./flow.js";
+// Importamos as novas funções do banco de dados
+import { initDb, getSession, setSession, saveHistory } from "./database.js";
 
 const app = express();
 const PORT = process.env.PORT || 3000;
@@ -10,36 +12,37 @@ const PORT = process.env.PORT || 3000;
 app.use(cors());
 app.use(express.json());
 
-// ==========================================
-// 🔑 CONFIGURAÇÕES SEGURAS (Lendo do .env)
-// ==========================================
-// AQUI ESTAVA O ERRO: Agora usamos process.env em vez da chave direta
-const openai = new OpenAI({ apiKey: process.env.OPENAI_API_KEY });
+// INICIA O BANCO DE DADOS AO LIGAR
+initDb();
 
+// ==========================================
+// 🔑 CONFIGURAÇÕES
+// ==========================================
+const openai = new OpenAI({ apiKey: process.env.OPENAI_API_KEY });
 const ZAPI_URL = `https://api.z-api.io/instances/3ECBAE4C12CFF1D2169172442EF70706/token/267C822F0A62F218E1DAFA68/send-text`;
 
-// ==========================================
-// 🧠 MEMÓRIA DE SESSÃO
-// ==========================================
-const userSessions = new Map();
-
-// Função Auxiliar de Envio
+// Função Auxiliar de Envio (Agora salva no histórico também!)
 async function sendWhatsApp(phone, message) {
   try {
+    // 1. Envia para Z-API
     await fetch(ZAPI_URL, {
       method: "POST",
       headers: { 
         "Content-Type": "application/json",
-        "Client-Token": process.env.ZAPI_CLIENT_TOKEN // Lendo do .env
+        "Client-Token": process.env.ZAPI_CLIENT_TOKEN
       },
       body: JSON.stringify({ phone, message })
     });
+
+    // 2. Salva o que o BOT respondeu no banco
+    await saveHistory(phone, 'assistant', message);
+
   } catch (error) {
     console.error("Erro no envio:", error);
   }
 }
 
-// Função IA (ChatGPT)
+// Função IA
 async function askOpenAI(userText) {
   try {
     const response = await openai.chat.completions.create({
@@ -54,7 +57,7 @@ async function askOpenAI(userText) {
     return response.choices[0].message.content.trim();
   } catch (error) {
     console.error("Erro OpenAI:", error);
-    return "Desculpe, estou recalculando. Tente novamente.";
+    return "Estou com lentidão, tente novamente.";
   }
 }
 
@@ -73,14 +76,19 @@ app.post("/webhook", async (req, res) => {
 
     const textOriginal = String(messageRaw).trim();
     const textLower = textOriginal.toLowerCase();
-    let session = userSessions.get(phone) || 'MAIN';
+
+    // 💾 SALVA O QUE O CLIENTE MANDOU NO BANCO
+    await saveHistory(phone, 'user', textOriginal);
+
+    // 🔄 RECUPERA A SESSÃO DO BANCO (Substitui o Map)
+    let session = await getSession(phone);
     let reply = "";
 
     console.log(`💬 ${phone} [${session}]: ${textOriginal}`);
 
     // 1. GATILHOS GLOBAIS
     if (['oi', 'olá', 'ola', 'menu', 'inicio', 'start', '0'].includes(textLower)) {
-      userSessions.set(phone, 'MAIN');
+      await setSession(phone, 'MAIN'); // Salva no banco
       await sendWhatsApp(phone, menuPrincipal());
       return res.json({ success: true });
     }
@@ -88,7 +96,7 @@ app.post("/webhook", async (req, res) => {
     // 2. MODO HUMANO
     if (session === 'HUMAN') {
        if (textLower === '#voltarbot') {
-         userSessions.set(phone, 'MAIN');
+         await setSession(phone, 'MAIN');
          await sendWhatsApp(phone, "🤖 Bot reativado!");
        }
        return res.json({ status: "human_mode" });
@@ -100,20 +108,21 @@ app.post("/webhook", async (req, res) => {
         reply = "💰 *Orçamento*\nConte um pouco sobre seu projeto:";
       } 
       else if (textLower === "2") {
-        userSessions.set(phone, 'SUPORTE');
+        await setSession(phone, 'SUPORTE'); // Atualiza banco
         reply = menuSuporte();
       } 
       else if (textLower === "3") {
         reply = "💲 *Financeiro*\nPara boletos, acesse nosso portal.";
       } 
       else if (textLower === "4") {
-        userSessions.set(phone, 'HUMAN');
+        await setSession(phone, 'HUMAN');
         reply = "✅ Transferindo para um atendente humano...";
       } 
       else {
+        // IA
         const aiResponse = await askOpenAI(textOriginal);
         if (aiResponse.includes("#HUMANO")) {
-           userSessions.set(phone, 'HUMAN');
+           await setSession(phone, 'HUMAN');
            reply = "Entendi, vou chamar um especialista humano. 👤";
         } else {
            reply = aiResponse;
@@ -123,7 +132,7 @@ app.post("/webhook", async (req, res) => {
     else if (session === 'SUPORTE') {
       if (['1', '2', '3'].includes(textLower)) {
         reply = "✅ Ticket aberto! Digite *menu* para voltar.";
-        userSessions.set(phone, 'MAIN');
+        await setSession(phone, 'MAIN');
       } else {
         reply = await askOpenAI("Contexto Suporte: " + textOriginal);
       }
@@ -139,5 +148,5 @@ app.post("/webhook", async (req, res) => {
 });
 
 app.listen(PORT, "0.0.0.0", () => {
-  console.log(`🚀 Server Seguro rodando na porta ${PORT}`);
+  console.log(`🚀 Server com Banco de Dados rodando na porta ${PORT}`);
 });
