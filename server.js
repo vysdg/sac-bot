@@ -94,7 +94,7 @@ app.post("/webhook", async (req, res) => {
     // =====================================================
     // 🚨 GATILHOS GLOBAIS (Reset)
     // =====================================================
-    if (['oi', 'olá', 'ola', 'menu', 'inicio', 'start', '0'].includes(textLower)) {
+    if (['oi', 'olá', 'ola', 'menu', 'inicio', 'start', '0', 'suporte', 'ajuda'].includes(textLower)) {
       await setSession(phone, 'MAIN');
       await sendWhatsApp(phone, menuPrincipal());
       return res.json({ success: true });
