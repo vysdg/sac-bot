@@ -1,45 +1,64 @@
 // flow.js
 
-// 🧠 CÉREBRO DA IA: Tudo que o bot precisa saber para responder perguntas abertas
-const promptSistema = `
-Você é o assistente virtual amigável da empresa NEXLYR (ou coloque o nome real).
-Sua missão é responder dúvidas dos clientes de forma curta, educada e comercial.
+export const promptSistema = `
+Você é o assistente comercial da NEXLYR (@nexlyr.ai), uma agência de elite em Automação e Inteligência Artificial.
+Sua meta é encantar clientes interessados em ter um bot igual a você.
 
-DADOS DA EMPRESA:
-- Serviços: Desenvolvimento de Software, Automação, Bots.
-- Horário: Segunda a Sexta, 09h às 18h.
-- Pagamento: PIX (5% desc), Cartão em até 12x, Boleto para empresas.
-- Prazos: Orçamentos em 24h, Projetos dependem do escopo.
-- Suporte: Para suporte técnico, peça para o cliente descrever o erro.
+SEUS SERVIÇOS:
+1. Chatbots com IA (como você): Atendimento 24h, humanizado e inteligente.
+2. Automação de Processos: Integração com sistemas, planilhas e CRMs.
+3. Consultoria em IA: Implementação de ChatGPT corporativo.
 
-REGRAS:
-1. Se o cliente quiser falar com humano/atendente, responda apenas: "#HUMANO".
-2. Se perguntarem preços específicos, diga que precisa avaliar o projeto (Opção 1 do menu).
-3. Responda em português do Brasil. Use emojis moderados.
+REGRAS DE OURO:
+- Dê respostas curtas e impactantes. Use emojis profissionais (🚀, 💡, 🤖).
+- Se perguntarem preço, diga que temos planos a partir de R$ X (defina um valor base ou diga que é sob medida) e tente agendar uma demo.
+- Se o cliente parecer confuso, sugira falar com um humano (Opção 4).
+- Nunca quebre o personagem. Você é a tecnologia da Nexlyr em ação.
 `;
 
-// 📋 MENUS FIXOS (Para navegação rápida)
-function menuPrincipal() {
+export function menuPrincipal() {
   return (
-    "👋 Olá! Sou o assistente virtual da *Nexlyr*.\n\n" +
-    "Como posso ajudar? (Digite o número ou sua dúvida)\n" +
-    "1️⃣ Fazer um Orçamento\n" +
-    "2️⃣ Suporte Técnico\n" +
-    "3️⃣ Financeiro / Pagamentos\n" +
-    "4️⃣ Falar com Atendente"
+    "👋 Olá! Bem-vindo à *Nexlyr AI*.\n" +
+    "Sou um assistente inteligente, criado pela nossa equipe. 🤖\n\n" +
+    "Como posso modernizar sua empresa hoje?\n" +
+    "1️⃣ 🚀 Conhecer Soluções (Bots & IA)\n" +
+    "2️⃣ 💎 Planos e Valores\n" +
+    "3️⃣ 🛠️ Já sou Cliente (Suporte)\n" +
+    "4️⃣ 👤 Falar com Especialista\n\n" +
+    "Ou digite sua dúvida (ex: _'Vocês fazem bot para imobiliária?'_)"
   );
 }
 
-function menuSuporte() {
+export function menuSolucoes() {
   return (
-    "🛠️ *Menu de Suporte*\n\n" +
-    "Escolha uma opção:\n" +
-    "1️⃣ Problema com acesso/login\n" +
-    "2️⃣ Sistema fora do ar\n" +
-    "3️⃣ Dúvida de utilização\n" +
-    "0️⃣ Voltar ao menu inicial"
+    "🚀 *Nossas Soluções de Alta Performance:*\n\n" +
+    "*1. Atendimento Inteligente 24h*\n" +
+    "Igual a mim! Responde dúvidas, filtra clientes e agenda reuniões.\n\n" +
+    "*2. Recuperação de Vendas*\n" +
+    "Bots ativos que chamam quem abandonou carrinho ou orçamento.\n\n" +
+    "*3. Integrações (API)*\n" +
+    "Conectamos o WhatsApp ao seu CRM, Planilhas ou Site.\n\n" +
+    "Digite *menu* para voltar."
   );
 }
 
-// Exportando
-export { promptSistema, menuPrincipal, menuSuporte };
+export function menuPlanos() {
+  return (
+    "💎 *Investimento Inteligente*\n\n" +
+    "Trabalhamos com projetos personalizados e planos mensais:\n\n" +
+    "🔹 *Setup Inicial:* Criação e treinamento da IA.\n" +
+    "🔹 *Mensalidade:* Manutenção e custos da API.\n\n" +
+    "Quer um orçamento exato para seu negócio?\n" +
+    "Digite *4* para falar com um consultor ou descreva o que precisa aqui."
+  );
+}
+
+export function menuSuporte() {
+  return (
+    "🛠️ *Área do Cliente Nexlyr*\n\n" +
+    "1️⃣ Reportar lentidão/queda\n" +
+    "2️⃣ Solicitar alteração no fluxo\n" +
+    "3️⃣ Segunda via de boleto\n" +
+    "0️⃣ Voltar ao menu principal"
+  );
+}
