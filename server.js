@@ -14,11 +14,21 @@ app.use(express.json());
 // INICIA O BANCO DE DADOS
 initDb();
 
-// 🔑 CONFIGURAÇÕES
-const openai = new OpenAI({ apiKey: process.env.OPENAI_API_KEY });
-const ZAPI_URL = `https://api.z-api.io/instances/${process.env.ZAPI_INSTANCE}/token/${process.env.ZAPI_TOKEN}/send-text`;
+// ==========================================
+// 🚨 CONFIGURAÇÃO DO ADMINISTRADOR (VOCÊ)
+// ==========================================
+const ADMIN_PHONE = "5511990190381"; // Seu número configurado para receber alertas
 
+// ==========================================
+// 🔑 CONFIGURAÇÕES DE API
+// ==========================================
+const openai = new OpenAI({ apiKey: process.env.OPENAI_API_KEY });
+const ZAPI_URL = `https://api.z-api.io/instances/3ECBAE4C12CFF1D2169172442EF70706/token/267C822F0A62F218E1DAFA68/send-text`;
+
+// ==========================================
 // 🛠️ FUNÇÕES AUXILIARES
+// ==========================================
+
 async function sendWhatsApp(phone, message) {
   try {
     await fetch(ZAPI_URL, {
@@ -29,7 +39,10 @@ async function sendWhatsApp(phone, message) {
       },
       body: JSON.stringify({ phone, message })
     });
-    await saveHistory(phone, 'assistant', message);
+    // Só salva no histórico se NÃO for mensagem para o Admin (para não sujar o banco)
+    if (phone !== ADMIN_PHONE) {
+        await saveHistory(phone, 'assistant', message);
+    }
   } catch (error) {
     console.error("Erro no envio:", error);
   }
@@ -53,7 +66,9 @@ async function askOpenAI(userText) {
   }
 }
 
+// ==========================================
 // 📩 WEBHOOK
+// ==========================================
 app.post("/webhook", async (req, res) => {
   try {
     const body = req.body;
@@ -67,7 +82,7 @@ app.post("/webhook", async (req, res) => {
     const textOriginal = String(messageRaw).trim();
     const textLower = textOriginal.toLowerCase();
 
-    // 1. SALVA HISTÓRICO
+    // 1. SALVA HISTÓRICO DO CLIENTE
     await saveHistory(phone, 'user', textOriginal);
 
     // 2. RECUPERA SESSÃO
@@ -79,13 +94,13 @@ app.post("/webhook", async (req, res) => {
     // =====================================================
     // 🚨 GATILHOS GLOBAIS (Reset)
     // =====================================================
-    // Funciona em qualquer lugar para salvar o usuário perdido
     if (['oi', 'olá', 'ola', 'menu', 'inicio', 'start', '0'].includes(textLower)) {
       await setSession(phone, 'MAIN');
       await sendWhatsApp(phone, menuPrincipal());
       return res.json({ success: true });
     }
 
+    // MODO HUMANO: Permite voltar ao bot com comando secreto
     if (session === 'HUMAN') {
        if (textLower === '#voltarbot') {
          await setSession(phone, 'MAIN');
@@ -101,36 +116,45 @@ app.post("/webhook", async (req, res) => {
     // --- 1. MENU PRINCIPAL ---
     if (session === 'MAIN') {
       
-      // SOLUÇÕES -> Agora muda para a sessão SOLUCOES
+      // OPÇÃO 1: SOLUÇÕES
       if (textLower === "1") {
-        await setSession(phone, 'SOLUCOES'); // <--- TRAVA AQUI
+        await setSession(phone, 'SOLUCOES');
         reply = menuSolucoes(); 
       } 
       
-      // PLANOS -> Agora muda para a sessão PLANOS
+      // OPÇÃO 2: PLANOS
       else if (textLower === "2") {
-        await setSession(phone, 'PLANOS'); // <--- TRAVA AQUI
+        await setSession(phone, 'PLANOS'); 
         reply = menuPlanos();
       } 
       
-      // JÁ SOU CLIENTE
+      // OPÇÃO 3: SUPORTE (JÁ CLIENTE)
       else if (textLower === "3") {
         await setSession(phone, 'SUPORTE');
         reply = menuSuporte();
       } 
       
-      // FALAR COM HUMANO
+      // OPÇÃO 4: FALAR COM HUMANO (ACIONA ALERTA)
       else if (textLower === "4") {
         await setSession(phone, 'HUMAN');
-        reply = "✅ Entendido. Estou notificando nossa equipe comercial.\n\nAguarda um instante que um de nossos consultores vai assumir aqui! 👤";
+        
+        reply = "✅ Entendido. Já notifiquei nossa equipe comercial.\n\nAguarda um instante que um de nossos consultores vai assumir aqui! 👤";
+        
+        // 🚨 ALERTA PARA O ADMIN (VOCÊ)
+        await sendWhatsApp(ADMIN_PHONE, `🚨 *LEAD QUENTE! (Menu)* 🔥\n\nCliente: *${phone}*\nSolicitou atendimento humano via Menu.\n\n👉 Link: https://wa.me/${phone}`);
       } 
       
       // IA (PERGUNTAS ABERTAS)
       else {
         const aiResponse = await askOpenAI(textOriginal);
+        
         if (aiResponse.includes("#HUMANO")) {
            await setSession(phone, 'HUMAN');
-           reply = "Vou transferir para um especialista humano. 👤";
+           reply = "Compreendo. Essa questão é específica, vou transferir para um especialista humano. 👤";
+           
+           // 🚨 ALERTA PARA O ADMIN (VOCÊ)
+           await sendWhatsApp(ADMIN_PHONE, `🚨 *TRANSBORDO IA* 🤖\n\nCliente: *${phone}*\nA IA detectou necessidade humana.\nMotivo: "${textOriginal}"\n\n👉 Link: https://wa.me/${phone}`);
+
         } else {
            reply = aiResponse;
         }
@@ -138,14 +162,14 @@ app.post("/webhook", async (req, res) => {
     }
 
     // --- 2. DENTRO DE SOLUÇÕES ---
-    // Aqui tratamos o cliente que está lendo sobre as soluções
     else if (session === 'SOLUCOES') {
         if (textLower === "4") {
              await setSession(phone, 'HUMAN');
              reply = "Ótima escolha! Um consultor vai te ajudar a implementar essa solução. 👤";
+             
+             // 🚨 ALERTA
+             await sendWhatsApp(ADMIN_PHONE, `🚨 *INTERESSE EM SOLUÇÃO* 🚀\n\nCliente: *${phone}*\nQuer contratar uma solução da Nexlyr.\n\n👉 Link: https://wa.me/${phone}`);
         } else {
-            // Qualquer outra coisa (tipo digitar 1, 2 ou 3 querendo selecionar)
-            // A gente avisa como prosseguir
             reply = "Para contratar qualquer uma dessas soluções, digite *4* para falar com um consultor.\n\nOu digite *menu* para voltar.";
         }
     }
@@ -155,12 +179,15 @@ app.post("/webhook", async (req, res) => {
         if (textLower === "4") {
              await setSession(phone, 'HUMAN');
              reply = "Perfeito. Vamos montar uma proposta personalizada para você. Aguarde um momento. 👤";
+
+             // 🚨 ALERTA
+             await sendWhatsApp(ADMIN_PHONE, `🚨 *INTERESSE EM PLANOS* 💎\n\nCliente: *${phone}*\nQuer saber valores/proposta.\n\n👉 Link: https://wa.me/${phone}`);
         } else {
             reply = "Gostou dos planos? Digite *4* para receber uma proposta formal.\n\nOu digite *menu* para voltar.";
         }
     }
 
-    // --- 4. DENTRO DE SUPORTE (Já cliente) ---
+    // --- 4. DENTRO DE SUPORTE ---
     else if (session === 'SUPORTE') {
       if (['1', '2', '3'].includes(textLower)) {
         reply = "✅ Solicitação registrada! Nossa equipe técnica entrará em contato em breve.\n\nDigite *menu* para voltar.";
@@ -170,7 +197,7 @@ app.post("/webhook", async (req, res) => {
       }
     }
 
-    // ENVIO
+    // ENVIO FINAL
     if (reply) {
       await sendWhatsApp(phone, reply);
     }
@@ -184,5 +211,5 @@ app.post("/webhook", async (req, res) => {
 });
 
 app.listen(PORT, "0.0.0.0", () => {
-  console.log(`🚀 NEXLYR Bot Inteligente rodando na porta ${PORT}`);
+  console.log(`🚀 NEXLYR Bot rodando na porta ${PORT}`);
 });
