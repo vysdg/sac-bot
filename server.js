@@ -1,10 +1,8 @@
-import "dotenv/config"; // Ativa o cofre .env
+import "dotenv/config";
 import express from "express";
 import cors from "cors";
 import OpenAI from "openai";
-// ⚠️ Importamos as novas funções de menu da Nexlyr aqui
 import { promptSistema, menuPrincipal, menuSuporte, menuSolucoes, menuPlanos } from "./flow.js";
-// Importamos as funções do banco de dados
 import { initDb, getSession, setSession, saveHistory } from "./database.js";
 
 const app = express();
@@ -13,24 +11,16 @@ const PORT = process.env.PORT || 3000;
 app.use(cors());
 app.use(express.json());
 
-// INICIA O BANCO DE DADOS AO LIGAR O SERVIDOR
+// INICIA O BANCO DE DADOS
 initDb();
 
-// ==========================================
-// 🔑 CONFIGURAÇÕES (Lendo do .env)
-// ==========================================
+// 🔑 CONFIGURAÇÕES
 const openai = new OpenAI({ apiKey: process.env.OPENAI_API_KEY });
+const ZAPI_URL = `https://api.z-api.io/instances/${process.env.ZAPI_INSTANCE}/token/${process.env.ZAPI_TOKEN}/send-text`;
 
-const ZAPI_URL = `https://api.z-api.io/instances/3ECBAE4C12CFF1D2169172442EF70706/token/267C822F0A62F218E1DAFA68/send-text`;
-
-// ==========================================
 // 🛠️ FUNÇÕES AUXILIARES
-// ==========================================
-
-// Função de Envio (Salva no histórico também!)
 async function sendWhatsApp(phone, message) {
   try {
-    // 1. Envia para Z-API
     await fetch(ZAPI_URL, {
       method: "POST",
       headers: { 
@@ -39,16 +29,12 @@ async function sendWhatsApp(phone, message) {
       },
       body: JSON.stringify({ phone, message })
     });
-
-    // 2. Salva o que o BOT respondeu no banco
     await saveHistory(phone, 'assistant', message);
-
   } catch (error) {
     console.error("Erro no envio:", error);
   }
 }
 
-// Função IA (ChatGPT)
 async function askOpenAI(userText) {
   try {
     const response = await openai.chat.completions.create({
@@ -57,20 +43,17 @@ async function askOpenAI(userText) {
         { role: "system", content: promptSistema },
         { role: "user", content: userText }
       ],
-      max_tokens: 250, // Aumentei um pouco para respostas melhores
-      temperature: 0.7, // Um pouco mais criativo para vender
+      max_tokens: 250,
+      temperature: 0.7,
     });
     return response.choices[0].message.content.trim();
   } catch (error) {
     console.error("Erro OpenAI:", error);
-    // Se der erro de cota ou conexão
-    return "No momento estou com muitas solicitações. Tente digitar *menu* para ver as opções manuais.";
+    return "Estou com muitas solicitações. Digite *menu* para voltar.";
   }
 }
 
-// ==========================================
-// 📩 WEBHOOK (Onde a mágica acontece)
-// ==========================================
+// 📩 WEBHOOK
 app.post("/webhook", async (req, res) => {
   try {
     const body = req.body;
@@ -84,27 +67,26 @@ app.post("/webhook", async (req, res) => {
     const textOriginal = String(messageRaw).trim();
     const textLower = textOriginal.toLowerCase();
 
-    // 💾 1. SALVA O QUE O CLIENTE MANDOU NO BANCO
+    // 1. SALVA HISTÓRICO
     await saveHistory(phone, 'user', textOriginal);
 
-    // 🔄 2. RECUPERA A SESSÃO DO BANCO
+    // 2. RECUPERA SESSÃO
     let session = await getSession(phone);
     let reply = "";
 
     console.log(`💬 ${phone} [${session}]: ${textOriginal}`);
 
     // =====================================================
-    // 🚨 GATILHOS GLOBAIS (Reset e Saída)
+    // 🚨 GATILHOS GLOBAIS (Reset)
     // =====================================================
+    // Funciona em qualquer lugar para salvar o usuário perdido
     if (['oi', 'olá', 'ola', 'menu', 'inicio', 'start', '0'].includes(textLower)) {
-      await setSession(phone, 'MAIN'); // Reseta para o inicio
+      await setSession(phone, 'MAIN');
       await sendWhatsApp(phone, menuPrincipal());
       return res.json({ success: true });
     }
 
-    // Se estiver em modo humano, o bot fica mudo
     if (session === 'HUMAN') {
-       // Comando secreto para voltar o bot
        if (textLower === '#voltarbot') {
          await setSession(phone, 'MAIN');
          await sendWhatsApp(phone, "🤖 Assistente Nexlyr reativado!");
@@ -113,64 +95,82 @@ app.post("/webhook", async (req, res) => {
     }
 
     // =====================================================
-    // 🕹️ LÓGICA DE NAVEGAÇÃO DA NEXLYR
+    // 🕹️ LÓGICA DE NAVEGAÇÃO
     // =====================================================
 
-    // --- MENU PRINCIPAL ---
+    // --- 1. MENU PRINCIPAL ---
     if (session === 'MAIN') {
       
-      // 1. SOLUÇÕES (Texto Informativo)
+      // SOLUÇÕES -> Agora muda para a sessão SOLUCOES
       if (textLower === "1") {
+        await setSession(phone, 'SOLUCOES'); // <--- TRAVA AQUI
         reply = menuSolucoes(); 
-        // Mantemos a sessão em MAIN para ele poder escolher outra coisa depois
       } 
       
-      // 2. PLANOS E PREÇOS (Texto Informativo)
+      // PLANOS -> Agora muda para a sessão PLANOS
       else if (textLower === "2") {
+        await setSession(phone, 'PLANOS'); // <--- TRAVA AQUI
         reply = menuPlanos();
-        // Mantemos em MAIN
       } 
       
-      // 3. JÁ SOU CLIENTE (Vai para submenu)
+      // JÁ SOU CLIENTE
       else if (textLower === "3") {
-        await setSession(phone, 'SUPORTE'); // <--- MUDA DE FASE
+        await setSession(phone, 'SUPORTE');
         reply = menuSuporte();
       } 
       
-      // 4. FALAR COM HUMANO (Transbordo)
+      // FALAR COM HUMANO
       else if (textLower === "4") {
-        await setSession(phone, 'HUMAN'); // <--- TRAVA O BOT
+        await setSession(phone, 'HUMAN');
         reply = "✅ Entendido. Estou notificando nossa equipe comercial.\n\nAguarda um instante que um de nossos consultores vai assumir aqui! 👤";
       } 
       
-      // NÃO DIGITOU NÚMERO? -> VAI PARA A IA VENDEDORA 🧠
+      // IA (PERGUNTAS ABERTAS)
       else {
         const aiResponse = await askOpenAI(textOriginal);
-        
-        // Se a IA achar que precisa de humano, ela manda a tag #HUMANO
         if (aiResponse.includes("#HUMANO")) {
            await setSession(phone, 'HUMAN');
-           reply = "Compreendo. Essa questão é específica, vou transferir para um especialista humano. 👤";
+           reply = "Vou transferir para um especialista humano. 👤";
         } else {
            reply = aiResponse;
         }
       }
     }
 
-    // --- MENU SUPORTE (Para quem já é cliente) ---
+    // --- 2. DENTRO DE SOLUÇÕES ---
+    // Aqui tratamos o cliente que está lendo sobre as soluções
+    else if (session === 'SOLUCOES') {
+        if (textLower === "4") {
+             await setSession(phone, 'HUMAN');
+             reply = "Ótima escolha! Um consultor vai te ajudar a implementar essa solução. 👤";
+        } else {
+            // Qualquer outra coisa (tipo digitar 1, 2 ou 3 querendo selecionar)
+            // A gente avisa como prosseguir
+            reply = "Para contratar qualquer uma dessas soluções, digite *4* para falar com um consultor.\n\nOu digite *menu* para voltar.";
+        }
+    }
+
+    // --- 3. DENTRO DE PLANOS ---
+    else if (session === 'PLANOS') {
+        if (textLower === "4") {
+             await setSession(phone, 'HUMAN');
+             reply = "Perfeito. Vamos montar uma proposta personalizada para você. Aguarde um momento. 👤";
+        } else {
+            reply = "Gostou dos planos? Digite *4* para receber uma proposta formal.\n\nOu digite *menu* para voltar.";
+        }
+    }
+
+    // --- 4. DENTRO DE SUPORTE (Já cliente) ---
     else if (session === 'SUPORTE') {
       if (['1', '2', '3'].includes(textLower)) {
         reply = "✅ Solicitação registrada! Nossa equipe técnica entrará em contato em breve.\n\nDigite *menu* para voltar.";
-        await setSession(phone, 'MAIN'); // Reseta após o ticket
+        await setSession(phone, 'MAIN');
       } else {
-        // IA contextualizada no suporte
-        reply = await askOpenAI("O cliente já é da base e está no menu de Suporte. A dúvida dele é: " + textOriginal);
+        reply = await askOpenAI("Cliente (SUPORTE): " + textOriginal);
       }
     }
 
-    // ==========================================
-    // 📤 ENVIO FINAL
-    // ==========================================
+    // ENVIO
     if (reply) {
       await sendWhatsApp(phone, reply);
     }
@@ -184,5 +184,5 @@ app.post("/webhook", async (req, res) => {
 });
 
 app.listen(PORT, "0.0.0.0", () => {
-  console.log(`🚀 NEXLYR Bot rodando na porta ${PORT}`);
+  console.log(`🚀 NEXLYR Bot Inteligente rodando na porta ${PORT}`);
 });
